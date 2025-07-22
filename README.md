@@ -2,6 +2,8 @@
 
 This project demonstrates Apache Airflow configuration and setup using Docker Compose with custom configurations and persistent data storage.
 
+> **🎯 Version Focus**: This project is specifically designed and tested for **Apache Airflow 3.0.2**. All configurations, dependencies, and documentation are optimized for this version.
+
 ## Overview
 
 Apache Airflow is an open-source platform to develop, schedule, and monitor workflows. This demo project showcases various Airflow configurations, best practices, and includes a complete Docker-based setup with:
@@ -150,6 +152,56 @@ Enterprise application role assignment:
 Token configuration settings:
 
 ![Token Configuration](images/TokenConfiguration.png)
+
+## Dependencies and Version Requirements
+
+### FAB Authentication Provider
+
+This project uses `apache-airflow-providers-fab==2.3.0` for authentication management. Here's why this specific version is required:
+
+#### Why FAB Provider is Needed
+
+- **Airflow 3.0.2 Compatibility**: Airflow 3.0.2 requires the Flask-AppBuilder (FAB) authentication manager for proper web UI authentication
+- **Authentication Manager**: The FAB provider supplies the `FabAuthManager` class that handles user authentication, authorization, and RBAC
+- **OAuth Integration**: Required for Azure AD OAuth integration and other external authentication providers
+- **Security Features**: Provides advanced security features like role-based access control (RBAC) and user management
+
+#### Version Specification
+
+```yaml
+_PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-fab==2.3.0
+```
+
+**Why version 2.3.0 specifically:**
+- **Stability**: Version 2.3.0 is tested and stable with Airflow 3.0.2
+- **Compatibility**: Ensures compatibility with the authentication manager configuration
+- **Bug Fixes**: Contains important fixes for OAuth and RBAC functionality
+- **API Compatibility**: Compatible with the API server authentication requirements
+
+#### Official Documentation
+
+For more information about the FAB provider and authentication in Airflow:
+
+- **Airflow Authentication**: [https://airflow.apache.org/docs/apache-airflow/stable/security/index.html](https://airflow.apache.org/docs/apache-airflow/stable/security/index.html)
+- **FAB Provider Documentation**: [https://airflow.apache.org/docs/apache-airflow-providers-fab/stable/index.html](https://airflow.apache.org/docs/apache-airflow-providers-fab/stable/index.html)
+- **Docker Installation**: [https://airflow.apache.org/docs/docker-stack/index.html](https://airflow.apache.org/docs/docker-stack/index.html)
+- **Authentication Managers**: [https://airflow.apache.org/docs/apache-airflow/stable/security/auth-manager.html](https://airflow.apache.org/docs/apache-airflow/stable/security/auth-manager.html)
+
+#### Configuration in Docker Compose
+
+The FAB provider is automatically installed when containers start:
+
+```yaml
+environment:
+  AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+  _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-fab==2.3.0
+```
+
+**Important Notes:**
+- The provider is installed at container startup (development only)
+- For production, build a custom Docker image with the provider pre-installed
+- The auth manager configuration is set via environment variables
+- Azure OAuth variables are configured for external authentication
 
 ## Development
 
@@ -311,37 +363,7 @@ curl http://localhost:8080/health
 - Use the web UI for task monitoring and debugging
 - Consider integrating with external monitoring tools
 
-## Configuration Details
 
-### RBAC Configuration
-
-The project includes Role-Based Access Control (RBAC) configuration for Airflow:
-
-![RBAC Configuration](images/RBAC-Config.png)
-
-### API Permissions
-
-API permission configuration:
-
-![API Permission](images/APIPermission.png)
-
-### Application Roles
-
-Application role setup:
-
-![App Role](images/AppRole.png)
-
-### Enterprise App Role Assignment
-
-Enterprise application role assignment:
-
-![Enterprise App Assign Role](images/EnterpriseAppAssignRole.png)
-
-### Token Configuration
-
-Token configuration settings:
-
-![Token Configuration](images/TokenConfiguration.png)
 
 ## Contributing
 
@@ -372,12 +394,4 @@ For issues and questions:
 - Management script for easy operations
 - Comprehensive documentation
 
-## Getting Started
 
-1. Ensure Apache Airflow is installed
-2. Configure your Airflow settings using the provided configuration files
-3. Start the Airflow webserver and scheduler
-
-## Documentation
-
-For more information about Apache Airflow, visit the [official documentation](https://airflow.apache.org/docs/).
