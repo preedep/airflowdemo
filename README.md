@@ -223,8 +223,12 @@ AZURE_CLIENT_SECRET=your-client-secret
 
 1. **Create App Registration** in Azure AD
 2. **Configure Authentication**:
-   - Add redirect URI: `http://localhost:8080/oauth-authorized/azure`
+   - Add redirect URI: `http://localhost:8080/auth/oauth-authorized/azure` (Airflow 3.0.3+)
+   - For older versions, use: `http://localhost:8080/oauth-authorized/azure`
    - Enable ID tokens and access tokens
+
+   ![Redirect URI Configuration](images/RedirectURI.png)
+
 3. **Set API Permissions**:
    - Microsoft Graph: `openid`, `email`, `profile`, `User.Read`
 4. **Create App Roles** (optional but recommended):
@@ -294,6 +298,10 @@ echo $AZURE_CLIENT_SECRET
 
 *Solution:* Verify redirect URI in Azure AD app registration matches:
 ```
+# For Airflow 3.0.3+
+http://localhost:8080/auth/oauth-authorized/azure
+
+# For older versions
 http://localhost:8080/oauth-authorized/azure
 ```
 
