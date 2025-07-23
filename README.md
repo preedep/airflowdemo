@@ -49,6 +49,28 @@ Apache Airflow is an open-source platform to develop, schedule, and monitor work
    ./run.sh down
    ```
 
+## Project Structure
+
+```
+airflowdemo/
+├── docker-compose.yaml          # Docker Compose configuration
+├── run.sh                       # Management script
+├── webserver_config.py          # Airflow webserver configuration
+├── README.md                    # This file
+├── .gitignore                   # Git ignore rules
+├── dags/                        # DAG files directory
+├── logs/                        # Airflow logs directory
+├── config/                      # Configuration files
+├── plugins/                     # Custom plugins
+├── pg_data/                     # PostgreSQL data (auto-created)
+└── images/                      # Documentation images
+    ├── RBAC-Config.png
+    ├── APIPermission.png
+    ├── AppRole.png
+    ├── EnterpriseAppAssignRole.png
+    └── TokenConfiguration.png
+```
+
 ## Management Script (`run.sh`)
 
 The project includes a convenient shell script for managing your Airflow setup:
@@ -99,28 +121,6 @@ The Docker Compose setup includes the following services:
 | `./webserver_config.py` | `/opt/airflow/webserver_config.py` | Webserver configuration |
 | `./pg_data` | `/var/lib/postgresql/data` | PostgreSQL data (persistent) |
 
-## Project Structure
-
-```
-airflowdemo/
-├── docker-compose.yaml          # Docker Compose configuration
-├── run.sh                       # Management script
-├── webserver_config.py          # Airflow webserver configuration
-├── README.md                    # This file
-├── .gitignore                   # Git ignore rules
-├── dags/                        # DAG files directory
-├── logs/                        # Airflow logs directory
-├── config/                      # Configuration files
-├── plugins/                     # Custom plugins
-├── pg_data/                     # PostgreSQL data (auto-created)
-└── images/                      # Documentation images
-    ├── RBAC-Config.png
-    ├── APIPermission.png
-    ├── AppRole.png
-    ├── EnterpriseAppAssignRole.png
-    └── TokenConfiguration.png
-```
-
 ## Configuration
 
 ### RBAC Configuration
@@ -153,7 +153,7 @@ Token configuration settings:
 
 ![Token Configuration](images/TokenConfiguration.png)
 
-## Dependencies and Version Requirements
+### Dependencies and Version Requirements
 
 ### FAB Authentication Provider
 
@@ -203,7 +203,7 @@ environment:
 - The auth manager configuration is set via environment variables
 - Azure OAuth variables are configured for external authentication
 
-## Azure AD Authentication Configuration
+### Azure AD Authentication Configuration
 
 ### Overview
 
@@ -322,6 +322,168 @@ docker-compose logs airflow-apiserver --tail=100 | grep "Final user_info"
 - **Role Synchronization**: `AUTH_ROLES_SYNC_AT_LOGIN = True` updates roles on each login
 - **Default Role**: New users get "Viewer" role by default
 - **Environment Variables**: Store sensitive Azure credentials securely
+
+## Airflow Role Management
+
+This project includes comprehensive role management capabilities for Airflow, allowing you to create project-specific roles with precise permissions for DAGs located in designated folders.
+
+### Role Creation Scripts
+
+The project provides two main scripts for creating and managing Airflow roles:
+
+#### 1. `create_role.sh` - Flexible Role Creator
+
+A modern, flexible script for creating roles with specific DAG permissions:
+
+```bash
+# Usage: ./create_role.sh ROLE_NAME DAG_ID [DAG_ID...]
+./create_role.sh ProjectA scb_ap1234_simple_dag scb_ap1234_complex_dag
+./create_role.sh ProjectB scb_ap5678_data_pipeline
+```
+
+**Features:**
+- ✅ Creates roles with essential UI menu access
+- ✅ Grants `can_read` and `can_edit` permissions for specified DAGs
+- ✅ Includes required resource permissions (Task Instances, Task Logs, etc.)
+- ✅ Modern error handling with colored output
+- ✅ Verification step showing created roles
+- ✅ Flexible - specify any DAG IDs as arguments
+
+#### 2. `create_airflow_role.sh` - Project-Based Role Creator
+
+Automatically discovers DAG files in project folders and creates roles:
+
+```bash
+# Automatically scans dags/scb_ap1234/ and dags/scb_ap5678/ folders
+./create_airflow_role.sh
+```
+
+**Features:**
+- ✅ Automatically discovers DAG files in project folders
+- ✅ Creates ProjectA role for DAGs in `dags/scb_ap1234/`
+- ✅ Creates ProjectB role for DAGs in `dags/scb_ap5678/`
+- ✅ Assigns both `can_read` and `can_edit` permissions
+- ✅ Includes UI menu access and resource permissions
+- ✅ Folder-based project isolation
+
+### Role Structure
+
+Each created role includes the following permissions:
+
+**Basic Access:**
+- `can_read` on Website
+- `menu_access` on DAGs, Browse, Assets
+
+**Resource Permissions:**
+- `can_read` on Task Instances, Task Logs, DAG Code, DAG Runs, XComs
+
+**DAG-Specific Permissions:**
+- `can_read` on DAG:{dag_id}
+- `can_edit` on DAG:{dag_id}
+
+### Project Structure
+
+The project follows a folder-based structure for DAG organization:
+
+```
+dags/
+├── scb_ap1234/          # Project A DAGs
+│   ├── simple_dag.py
+│   └── complex_dag.py
+└── scb_ap5678/          # Project B DAGs
+    ├── data_pipeline.py
+    └── etl_process.py
+```
+
+**Role Mapping:**
+- **ProjectA Role**: Access to all DAGs in `dags/scb_ap1234/` folder
+- **ProjectB Role**: Access to all DAGs in `dags/scb_ap5678/` folder
+
+### Azure AD Integration
+
+Roles are automatically mapped from Azure AD app roles via the custom security manager in `webserver_config.py`. See the **Azure AD Authentication Configuration** section above for detailed role mapping configuration.
+
+### Managing Roles
+
+#### List All Roles
+```bash
+docker compose exec airflow-scheduler airflow roles list
+```
+
+#### View Role Permissions
+```bash
+docker compose exec airflow-scheduler airflow roles list -o table -p
+```
+
+#### Delete a Role
+```bash
+docker compose exec airflow-scheduler airflow roles delete ROLE_NAME
+```
+
+#### Export Roles
+```bash
+docker compose exec airflow-scheduler airflow roles export /tmp/roles.json
+```
+
+### Troubleshooting Role Issues
+
+#### Common Issues
+
+**Issue: Role not appearing in UI**
+```bash
+# Check if role exists
+docker compose exec airflow-scheduler airflow roles list
+
+# Restart webserver to refresh roles
+docker compose restart airflow-webserver
+```
+
+**Issue: User can't see DAGs**
+```bash
+# Check user's assigned roles (see Azure AD Authentication troubleshooting above for detailed logs)
+docker compose logs airflow-webserver | grep "🔐"
+
+# Verify role permissions
+docker compose exec airflow-scheduler airflow roles list -o table -p
+```
+
+**Issue: Permission denied errors**
+```bash
+# Check if required base permissions are granted
+./create_role.sh ROLE_NAME DAG_ID  # Re-run to add missing permissions
+```
+
+### Security Best Practices
+
+1. **Principle of Least Privilege**: Only grant permissions needed for the user's role
+2. **Project Isolation**: Use separate roles for different projects
+3. **Regular Audits**: Periodically review role permissions
+4. **Role Naming**: Use descriptive role names that reflect their purpose
+5. **Documentation**: Keep role assignments documented
+
+### Advanced Role Configuration
+
+For custom role requirements, you can extend the scripts or create roles manually:
+
+```bash
+# Create custom role
+docker compose exec airflow-scheduler airflow roles create CustomRole
+
+# Add specific permissions
+docker compose exec airflow-scheduler airflow roles add-perms CustomRole -a can_read -r "DAG:my_custom_dag"
+```
+
+### Role Automation
+
+For CI/CD integration, you can automate role creation:
+
+```bash
+#!/bin/bash
+# Example CI/CD script
+for project in ProjectA ProjectB ProjectC; do
+    ./create_role.sh "$project" "${project,,}_*"  # lowercase project name with wildcard
+done
+```
 
 ## Development
 
@@ -549,197 +711,3 @@ For issues and questions:
 - Persistent PostgreSQL storage
 - Management script for easy operations
 - Comprehensive documentation
-
-## Airflow Role Management
-
-This project includes comprehensive role management for Airflow 3.0.2, providing granular access control for different projects and DAGs.
-
-### Role Creation Scripts
-
-Two scripts are available for creating Airflow roles:
-
-#### 1. `create_role.sh` - Flexible Role Creator
-
-A modern, flexible script for creating roles with specific DAG permissions.
-
-**Usage:**
-```bash
-# Make script executable
-chmod +x create_role.sh
-
-# Create role for specific DAGs
-./create_role.sh ROLE_NAME DAG_ID [DAG_ID...]
-
-# Examples
-./create_role.sh ProjectA scb_ap1234_simple_dag
-./create_role.sh ProjectB scb_ap5678_simple_dag scb_ap5678_complex_dag
-```
-
-**Features:**
-- ✅ Creates role with proper UI menu access
-- ✅ Grants essential permissions (Task Instances, Task Logs, DAG Code, etc.)
-- ✅ Adds DAG-specific `can_read` and `can_edit` permissions
-- ✅ Modern bash syntax with error handling
-- ✅ Colored output for better readability
-- ✅ Lists roles after creation for verification
-
-#### 2. `create_airflow_role.sh` - Project-Based Role Creator
-
-A comprehensive script that automatically discovers DAG files in project folders.
-
-**Usage:**
-```bash
-# Make script executable
-chmod +x create_airflow_role.sh
-
-# Run to create ProjectA and ProjectB roles
-./create_airflow_role.sh
-```
-
-**Features:**
-- ✅ Automatically scans `dags/scb_ap1234/` and `dags/scb_ap5678/` folders
-- ✅ Discovers all `.py` DAG files in each project folder
-- ✅ Creates roles with permissions for all discovered DAGs
-- ✅ Comprehensive error handling and logging
-- ✅ Validates folder existence before processing
-
-### Role Structure
-
-Each created role includes the following permissions:
-
-#### Basic Access Permissions
-- **`can_read Website`** - Access to Airflow web interface
-- **`menu_access DAGs`** - Access to DAGs menu
-- **`menu_access Browse`** - Access to Browse menu
-- **`menu_access Assets`** - Access to Assets menu
-
-#### Resource Permissions
-- **`can_read Task Instances`** - View task execution details
-- **`can_read Task Logs`** - View task execution logs
-- **`can_read DAG Code`** - View DAG source code
-- **`can_read DAG Runs`** - View DAG execution history
-- **`can_read XComs`** - View cross-communication data
-
-#### DAG-Specific Permissions
-For each DAG assigned to the role:
-- **`can_read DAG:dag_id`** - View specific DAG
-- **`can_edit DAG:dag_id`** - Edit specific DAG (pause/unpause, etc.)
-
-### Project Structure
-
-The role system is designed around the following project structure:
-
-```
-dags/
-├── scb_ap1234/          # ProjectA DAGs
-│   ├── scb_ap1234_simple_dag.py
-│   └── scb_ap1234_complex_dag.py
-└── scb_ap5678/          # ProjectB DAGs
-    ├── scb_ap5678_simple_dag.py
-    └── scb_ap5678_complex_dag.py
-```
-
-### Role Examples
-
-#### ProjectA Role
-- **Access**: All DAGs in `dags/scb_ap1234/` folder
-- **Permissions**: Read and edit DAGs starting with `scb_ap1234`
-- **Use Case**: Team members working on Project A
-
-#### ProjectB Role
-- **Access**: All DAGs in `dags/scb_ap5678/` folder
-- **Permissions**: Read and edit DAGs starting with `scb_ap5678`
-- **Use Case**: Team members working on Project B
-
-### Azure AD Integration
-
-Roles are automatically mapped from Azure AD app roles via the custom security manager in `webserver_config.py`. See the **Azure AD Authentication Configuration** section above for detailed role mapping configuration.
-
-### Managing Roles
-
-#### List All Roles
-```bash
-docker compose exec airflow-scheduler airflow roles list
-```
-
-#### View Role Permissions
-```bash
-docker compose exec airflow-scheduler airflow roles list -o table -p
-```
-
-#### Delete a Role
-```bash
-docker compose exec airflow-scheduler airflow roles delete ROLE_NAME
-```
-
-#### Export Roles
-```bash
-docker compose exec airflow-scheduler airflow roles export /tmp/roles.json
-```
-
-### Troubleshooting Role Issues
-
-#### Common Issues
-
-**Issue: Role not appearing in UI**
-```bash
-# Check if role exists
-docker compose exec airflow-scheduler airflow roles list
-
-# Restart webserver to refresh roles
-docker compose restart airflow-webserver
-```
-
-**Issue: User can't see DAGs**
-```bash
-# Check user's assigned roles (see Azure AD Authentication troubleshooting above for detailed logs)
-docker compose logs airflow-webserver | grep "🔐"
-
-# Verify role permissions
-docker compose exec airflow-scheduler airflow roles list -o table -p
-```
-
-**Issue: Permission denied errors**
-```bash
-# Check if required base permissions are granted
-./create_role.sh ROLE_NAME DAG_ID  # Re-run to add missing permissions
-```
-
-### Security Best Practices
-
-1. **Principle of Least Privilege**: Only grant permissions needed for the user's role
-2. **Project Isolation**: Use separate roles for different projects
-3. **Regular Audits**: Periodically review role permissions
-4. **Role Naming**: Use descriptive role names that reflect their purpose
-5. **Documentation**: Keep role assignments documented
-
-### Advanced Role Configuration
-
-For custom role requirements, you can extend the scripts or create roles manually:
-
-```bash
-# Create custom role
-docker compose exec airflow-scheduler airflow roles create CustomRole
-
-# Add specific permissions
-docker compose exec airflow-scheduler airflow roles add-perms CustomRole -a can_read -r "DAG:my_dag"
-docker compose exec airflow-scheduler airflow roles add-perms CustomRole -a can_edit -r "DAG:my_dag"
-```
-
-### Role Automation
-
-For automated role creation in CI/CD pipelines:
-
-```bash
-# Example: Create role for new project
-./create_role.sh NewProject new_project_dag_1 new_project_dag_2
-
-# Example: Batch create roles
-for dag in $(ls dags/new_project/*.py | xargs -n1 basename -s .py); do
-    ./create_role.sh NewProject "$dag"
-done
-```
-
-This role management system provides secure, scalable access control for your Airflow 3.0.2 deployment while maintaining project isolation and ease of management.
-
-
