@@ -117,4 +117,38 @@ class CustomSecurityManager(FabAirflowSecurityManagerOverride):
         logger.debug(f"✅ Final user_info: {user_info}")
         return user_info
 
+    def auth_user_oauth(self, userinfo):
+        """Override to ensure proper role assignment for OAuth users"""
+        logger.debug(f"🔐 [auth_user_oauth] Processing user: {userinfo.get('username')}")
+        logger.debug(f"🔐 [auth_user_oauth] User roles: {userinfo.get('role_keys', [])}")
+        
+        # Call parent method to handle user creation/update
+        user = super().auth_user_oauth(userinfo)
+        
+        if user:
+            # Get the roles from userinfo
+            role_keys = userinfo.get('role_keys', [AUTH_USER_REGISTRATION_ROLE])
+            logger.debug(f"🔐 [auth_user_oauth] Assigning roles {role_keys} to user {user.username}")
+            
+            # Clear existing roles and assign new ones
+            user.roles = []
+            
+            for role_name in role_keys:
+                role = self.find_role(role_name)
+                if not role:
+                    logger.warning(f"⚠️ Role '{role_name}' not found, creating it")
+                    # Create role if it doesn't exist
+                    role = self.add_role(role_name)
+                
+                if role and role not in user.roles:
+                    user.roles.append(role)
+                    logger.debug(f"🔐 Added role '{role_name}' to user {user.username}")
+            
+            # Save the user with updated roles
+            self.get_session.merge(user)
+            self.get_session.commit()
+            logger.debug(f"✅ User {user.username} updated with roles: {[r.name for r in user.roles]}")
+        
+        return user
+
 SECURITY_MANAGER_CLASS = CustomSecurityManager
