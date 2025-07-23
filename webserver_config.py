@@ -1,53 +1,51 @@
 from __future__ import annotations
 import os
 import logging
+import sys
 
 from flask_appbuilder.security.manager import AUTH_OAUTH
 from airflow.providers.fab.auth_manager.security_manager.override import FabAirflowSecurityManagerOverride
+from airflow.utils.log.logging_mixin import RedirectStdHandler
+
+# ตั้งค่า logger
+logger = logging.getLogger(__name__)
+# ส่ง log ไป stdout เพื่อให้ docker-compose log เก็บได้
+handler = RedirectStdHandler(stream='stdout')
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+logger.debug("✅ logger.debug ถูกเรียกจาก webserver_config.py")
 
 
-
-# ตั้งค่า log ให้ง่ายต่อการ debug
-logging.basicConfig(level=logging.DEBUG)
-
-# ตรวจสอบตัวแปรสิ่งแวดล้อมก่อนเริ่ม
+# ตรวจสอบ environment variable
 AZURE_TENANT_ID = os.environ.get("AZURE_TENANT_ID")
 AZURE_CLIENT_ID = os.environ.get("AZURE_CLIENT_ID")
 AZURE_CLIENT_SECRET = os.environ.get("AZURE_CLIENT_SECRET")
 
-logging.debug(f"[OAUTH ENV] TENANT={AZURE_TENANT_ID}, CLIENT_ID={'SET' if AZURE_CLIENT_ID else 'NOT SET'}")
-if not (AZURE_TENANT_ID and AZURE_CLIENT_ID and AZURE_CLIENT_SECRET):
-    missing = [v for v,n in [
-        ("AZURE_TENANT_ID", AZURE_TENANT_ID),
-        ("AZURE_CLIENT_ID", AZURE_CLIENT_ID),
-        ("AZURE_CLIENT_SECRET", AZURE_CLIENT_SECRET),
-    ] if not n]
-    raise RuntimeError(f"Missing required Azure env vars: {','.join(missing)}")
+missing_env = [name for name, val in {
+    "AZURE_TENANT_ID": AZURE_TENANT_ID,
+    "AZURE_CLIENT_ID": AZURE_CLIENT_ID,
+    "AZURE_CLIENT_SECRET": AZURE_CLIENT_SECRET,
+}.items() if not val]
 
-# เปิดการป้องกัน CSRF สำหรับ OAuth login
+if missing_env:
+    raise RuntimeError(f"❌ Missing required Azure env vars: {', '.join(missing_env)}")
+logger.debug(f"[OAUTH ENV] TENANT={AZURE_TENANT_ID}, CLIENT_ID={'SET' if AZURE_CLIENT_ID else 'NOT SET'}")
+
+# CSRF
 WTF_CSRF_ENABLED = True
 WTF_CSRF_TIME_LIMIT = None
 
-# ตั้งค่า OAuth ผ่าน Flask AppBuilder
+# Airflow OAuth config
 AUTH_TYPE = AUTH_OAUTH
-SECURITY_MANAGER_CLASS = FabAirflowSecurityManagerOverride
-
 AUTH_USER_REGISTRATION = True
+AUTH_USER_REGISTRATION_ROLE = "Viewer"  # default role
 AUTH_ROLES_SYNC_AT_LOGIN = True
-
-AUTH_USER_REGISTRATION_ROLE = "Viewer"
-
-AUTH_ROLES_MAPPING = {
-    "Airflow.Admin": ["Admin"],
-    "Airflow.Viewer": ["Viewer"],
-    "Airflow.ProjectA": ["ProjectA"],
-    "Airflow.ProjectB": ["ProjectB"],
-}
 
 OAUTH_PROVIDERS = [
     {
         "name": "azure",
-        "token_key": "id_token",
+        "token_key": "id_token",  # Important: this determines which token to extract claims from
         "icon": "fa-windows",
         "remote_app": {
             "client_id": AZURE_CLIENT_ID,
@@ -60,5 +58,63 @@ OAUTH_PROVIDERS = [
                 "scope": "openid email profile User.read",
             },
         },
+        "role_keys": "roles",  # <-- this will be used in custom security manager
     }
 ]
+
+# Custom SecurityManager for mapping Azure AD AppRole to Airflow Role
+class CustomSecurityManager(FabAirflowSecurityManagerOverride):
+    def get_oauth_user_info(self, provider, resp):
+        logger.debug("🔐 [CustomSecurityManager] get_oauth_user_info called")
+  
+        # แสดงข้อมูลทั้งหมดที่ Azure ส่งกลับมา
+        for key, value in resp.items():
+            logger.debug(f"🔐 Azure resp key: {key} -> value: {value!r}")
+
+        # Check for roles in both id_token_claims and userinfo
+        id_token_claims = resp.get("id_token_claims", {})
+        userinfo = resp.get("userinfo", {})
+        
+        logger.debug(f"🔐 id_token_claims (full): {id_token_claims!r}")
+        logger.debug(f"🔐 userinfo (full): {userinfo!r}")
+
+        # Try to get roles from id_token_claims first, then from userinfo
+        roles_from_token = id_token_claims.get("roles", []) or userinfo.get("roles", [])
+        
+        logger.debug(f"🔐 Roles from id_token_claims: {id_token_claims.get('roles', [])}")
+        logger.debug(f"🔐 Roles from userinfo: {userinfo.get('roles', [])}")
+        logger.debug(f"🔐 Final roles from token: {roles_from_token!r}")
+
+
+        # Azure AD App Role to Airflow Role mapping
+        role_mapping = {
+            "Airflow.Admin": "Admin",
+            "Airflow.Viewer": "Viewer",
+            "Airflow.ProjectA": "ProjectA",
+            "Airflow.ProjectB": "ProjectB",
+        }
+
+        # Map Azure AD roles to Airflow roles
+        mapped_roles = []
+        for azure_role in roles_from_token:
+            if azure_role in role_mapping:
+                airflow_role = role_mapping[azure_role]
+                mapped_roles.append(airflow_role)
+                logger.debug(f"🔐 Mapped '{azure_role}' -> '{airflow_role}'")
+            else:
+                logger.warning(f"⚠️ Unknown Azure role '{azure_role}' - not mapped to any Airflow role")
+        
+        # If no roles mapped, use default registration role
+        if not mapped_roles:
+            mapped_roles = [AUTH_USER_REGISTRATION_ROLE]
+            logger.debug(f"🔐 No roles mapped, using default role: {AUTH_USER_REGISTRATION_ROLE}")
+        
+        logger.debug(f"🔐 Final mapped Airflow roles: {mapped_roles}")
+
+        user_info = super().get_oauth_user_info(provider, resp)
+        user_info["role_keys"] = mapped_roles if mapped_roles else [AUTH_USER_REGISTRATION_ROLE]
+
+        logger.debug(f"✅ Final user_info: {user_info}")
+        return user_info
+
+SECURITY_MANAGER_CLASS = CustomSecurityManager

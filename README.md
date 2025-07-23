@@ -258,6 +258,56 @@ docker system df
 docker system prune -f
 ```
 
+#### 5. DAG Import Errors (Airflow 3.0.2 Breaking Changes)
+
+**Problem**: DAGs fail to import with errors like:
+```
+TypeError: DAG.__init__() got an unexpected keyword argument 'schedule_interval'
+```
+
+**Root Cause**: Airflow 3.0.2 has breaking changes from earlier versions:
+- `schedule_interval` parameter is no longer supported
+- Must use `schedule` parameter instead
+
+**Solution**: Update your DAG definitions:
+
+❌ **Old syntax (Airflow 2.x):**
+```python
+with DAG(
+    'my_dag',
+    schedule_interval='@daily',  # Not supported in 3.0.2
+    start_date=datetime(2025, 1, 1),
+) as dag:
+    pass
+```
+
+✅ **New syntax (Airflow 3.0.2):**
+```python
+with DAG(
+    'my_dag',
+    schedule='@daily',  # Use 'schedule' instead
+    start_date=datetime(2025, 1, 1),
+) as dag:
+    pass
+```
+
+**Common schedule values:**
+- `schedule='@daily'` - Run daily
+- `schedule='@hourly'` - Run hourly
+- `schedule='0 2 * * *'` - Run at 2 AM daily (cron format)
+- `schedule=None` - Manual trigger only
+
+**Check DAG import errors:**
+```bash
+# View DAG processor logs
+docker-compose logs airflow-dag-processor --tail=100
+
+# Check import errors via API
+curl "http://localhost:8080/api/v2/importErrors"
+```
+
+**Example working DAG**: See `example_dag_airflow_3.py` in the project root for a complete example compatible with Airflow 3.0.2.
+
 ### Logs and Debugging
 
 ```bash
