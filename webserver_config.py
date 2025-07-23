@@ -224,8 +224,13 @@ class CustomSecurityManager(FabAirflowSecurityManagerOverride):
         logger.debug("🔐 " + "="*50)
         return user_info
 
-    def auth_user_oauth(self, userinfo):
-        """Override to ensure proper role assignment for OAuth users"""
+    def _log_user_info(self, userinfo):
+        """
+        Log user information for debugging.
+        
+        Args:
+            userinfo (dict): User information dictionary
+        """
         logger.debug("🔐 [auth_user_oauth] " + "="*50)
         logger.debug("🔐 [auth_user_oauth] Starting OAuth user authentication")
         logger.debug(f"🔐 [auth_user_oauth] Input userinfo keys: {list(userinfo.keys())}")
@@ -235,6 +240,72 @@ class CustomSecurityManager(FabAirflowSecurityManagerOverride):
         logger.debug(f"🔐 [auth_user_oauth] Last name: {userinfo.get('last_name')}")
         logger.debug(f"🔐 [auth_user_oauth] Role keys: {userinfo.get('role_keys', [])}")
         logger.debug("🔐 [auth_user_oauth] " + "-"*50)
+    
+    def _assign_roles_to_user(self, user, role_keys):
+        """
+        Assign roles to user, creating roles if they don't exist.
+        
+        Args:
+            user: User object from database
+            role_keys (list): List of role names to assign
+            
+        Returns:
+            tuple: (successfully_assigned, failed_assignments) lists
+        """
+        # Clear existing roles
+        old_roles = [r.name for r in user.roles]
+        user.roles = []
+        logger.debug(f"🔐 [auth_user_oauth] Cleared existing roles: {old_roles}")
+        
+        successfully_assigned = []
+        failed_assignments = []
+        
+        # Process each role
+        for role_name in role_keys:
+            logger.debug(f"🔐 [auth_user_oauth] Processing role: '{role_name}'")
+            role = self.find_role(role_name)
+            
+            # Create role if it doesn't exist
+            if not role:
+                logger.warning(f"⚠️ [auth_user_oauth] Role '{role_name}' not found, creating...")
+                try:
+                    role = self.add_role(role_name)
+                    if role:
+                        logger.debug(f"🔐 [auth_user_oauth] ✅ Created role '{role_name}'")
+                    else:
+                        logger.error(f"❌ [auth_user_oauth] Failed to create role '{role_name}'")
+                        failed_assignments.append(role_name)
+                        continue
+                except Exception as e:
+                    logger.error(f"❌ [auth_user_oauth] Exception creating role '{role_name}': {e}")
+                    failed_assignments.append(role_name)
+                    continue
+            else:
+                logger.debug(f"🔐 [auth_user_oauth] Found existing role '{role_name}' (ID: {role.id})")
+            
+            # Assign role to user
+            if role and role not in user.roles:
+                user.roles.append(role)
+                successfully_assigned.append(role_name)
+                logger.debug(f"🔐 [auth_user_oauth] ✅ Added role '{role_name}' to user")
+            elif role in user.roles:
+                logger.debug(f"🔐 [auth_user_oauth] Role '{role_name}' already assigned")
+                successfully_assigned.append(role_name)
+        
+        return successfully_assigned, failed_assignments
+    
+    def auth_user_oauth(self, userinfo):
+        """
+        Override to ensure proper role assignment for OAuth users.
+        
+        Args:
+            userinfo (dict): User information from OAuth provider
+            
+        Returns:
+            User: User object with assigned roles, or None if failed
+        """
+        # Log user information
+        self._log_user_info(userinfo)
         
         # Call parent method to handle user creation/update
         logger.debug("🔐 [auth_user_oauth] Calling parent auth_user_oauth...")
@@ -247,52 +318,19 @@ class CustomSecurityManager(FabAirflowSecurityManagerOverride):
         logger.debug(f"🔐 [auth_user_oauth] Parent returned user: {user.username} (ID: {user.id})")
         logger.debug(f"🔐 [auth_user_oauth] User's current roles before update: {[r.name for r in user.roles]}")
         
-        # Get the roles from userinfo
+        # Get target roles from userinfo
         role_keys = userinfo.get('role_keys', [AUTH_USER_REGISTRATION_ROLE])
         logger.debug(f"🔐 [auth_user_oauth] Target roles to assign: {role_keys}")
         
-        # Clear existing roles and assign new ones
-        old_roles = [r.name for r in user.roles]
-        user.roles = []
-        logger.debug(f"🔐 [auth_user_oauth] Cleared existing roles: {old_roles}")
+        # Assign roles to user
+        successfully_assigned, failed_assignments = self._assign_roles_to_user(user, role_keys)
         
-        successfully_assigned = []
-        failed_assignments = []
-        
-        for role_name in role_keys:
-            logger.debug(f"🔐 [auth_user_oauth] Processing role: '{role_name}'")
-            role = self.find_role(role_name)
-            
-            if not role:
-                logger.warning(f"⚠️ [auth_user_oauth] Role '{role_name}' not found in database, attempting to create...")
-                try:
-                    role = self.add_role(role_name)
-                    if role:
-                        logger.debug(f"🔐 [auth_user_oauth] ✅ Successfully created role '{role_name}'")
-                    else:
-                        logger.error(f"❌ [auth_user_oauth] Failed to create role '{role_name}'")
-                        failed_assignments.append(role_name)
-                        continue
-                except Exception as e:
-                    logger.error(f"❌ [auth_user_oauth] Exception creating role '{role_name}': {e}")
-                    failed_assignments.append(role_name)
-                    continue
-            else:
-                logger.debug(f"🔐 [auth_user_oauth] Found existing role '{role_name}' (ID: {role.id})")
-            
-            if role and role not in user.roles:
-                user.roles.append(role)
-                successfully_assigned.append(role_name)
-                logger.debug(f"🔐 [auth_user_oauth] ✅ Added role '{role_name}' to user {user.username}")
-            elif role in user.roles:
-                logger.debug(f"🔐 [auth_user_oauth] Role '{role_name}' already assigned to user")
-                successfully_assigned.append(role_name)
-        
+        # Log assignment results
         logger.debug(f"🔐 [auth_user_oauth] Successfully assigned roles: {successfully_assigned}")
         if failed_assignments:
             logger.error(f"❌ [auth_user_oauth] Failed to assign roles: {failed_assignments}")
         
-        # Save the user with updated roles
+        # Save user to database
         try:
             logger.debug("🔐 [auth_user_oauth] Saving user to database...")
             self.get_session.merge(user)
