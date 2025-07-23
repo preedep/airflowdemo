@@ -252,6 +252,10 @@ role_mapping = {
 - Falls back to default "Viewer" role if no roles are mapped
 - Provides detailed logging for troubleshooting
 
+**Airflow Roles:**
+
+![Airflow Role](images/AirflowRole.png)
+
 ### Authentication Flow
 
 1. **User clicks "Sign in with Azure"** on Airflow login page
