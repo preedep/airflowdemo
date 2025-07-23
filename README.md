@@ -203,6 +203,122 @@ environment:
 - The auth manager configuration is set via environment variables
 - Azure OAuth variables are configured for external authentication
 
+## Azure AD Authentication Configuration
+
+### Overview
+
+This project is configured with Azure Active Directory (Azure AD) OAuth authentication using Flask-AppBuilder (FAB) authentication manager. Users can log in using their Azure AD credentials and are automatically assigned Airflow roles based on their Azure AD app roles.
+
+### Environment Variables Required
+
+The following environment variables must be set in your `.env` file or Docker Compose environment:
+
+```bash
+AZURE_TENANT_ID=your-tenant-id
+AZURE_CLIENT_ID=your-client-id  
+AZURE_CLIENT_SECRET=your-client-secret
+```
+
+### Azure AD App Registration Setup
+
+1. **Create App Registration** in Azure AD
+2. **Configure Authentication**:
+   - Add redirect URI: `http://localhost:8080/oauth-authorized/azure`
+   - Enable ID tokens and access tokens
+3. **Set API Permissions**:
+   - Microsoft Graph: `openid`, `email`, `profile`, `User.Read`
+4. **Create App Roles** (optional but recommended):
+   - `Airflow.Admin` - Full administrative access
+   - `Airflow.Viewer` - Read-only access
+   - `Airflow.ProjectA` - Project A specific access
+   - `Airflow.ProjectB` - Project B specific access
+
+### Role Mapping Configuration
+
+The `webserver_config.py` file contains a custom `CustomSecurityManager` class that maps Azure AD app roles to Airflow roles:
+
+```python
+role_mapping = {
+    "Airflow.Admin": "Admin",
+    "Airflow.Viewer": "Viewer", 
+    "Airflow.ProjectA": "ProjectA",
+    "Airflow.ProjectB": "ProjectB",
+}
+```
+
+**Role Extraction Logic:**
+- Checks both `id_token_claims` and `userinfo` for roles
+- Maps Azure AD app roles to corresponding Airflow roles
+- Falls back to default "Viewer" role if no roles are mapped
+- Provides detailed logging for troubleshooting
+
+### Authentication Flow
+
+1. **User clicks "Sign in with Azure"** on Airflow login page
+2. **Redirected to Azure AD** for authentication
+3. **Azure AD returns tokens** with user info and roles
+4. **Custom SecurityManager** extracts and maps roles
+5. **User logged into Airflow** with appropriate permissions
+
+### Troubleshooting Authentication
+
+#### Common Issues
+
+**Issue: Users get "Viewer" role instead of expected role**
+
+*Solution:* Check the authentication logs:
+```bash
+docker-compose logs airflow-apiserver | grep "🔐"
+```
+
+Look for:
+- `🔐 Roles from userinfo: ['Airflow.Admin']` - Shows roles from Azure AD
+- `🔐 Mapped 'Airflow.Admin' -> 'Admin'` - Shows successful mapping
+- `🔐 Final mapped Airflow roles: ['Admin']` - Shows final result
+
+**Issue: "Missing required Azure env vars" error**
+
+*Solution:* Ensure all Azure environment variables are set:
+```bash
+# Check if variables are set
+echo $AZURE_TENANT_ID
+echo $AZURE_CLIENT_ID
+echo $AZURE_CLIENT_SECRET
+```
+
+**Issue: OAuth redirect URI mismatch**
+
+*Solution:* Verify redirect URI in Azure AD app registration matches:
+```
+http://localhost:8080/oauth-authorized/azure
+```
+
+#### Debug Authentication
+
+**Enable detailed logging:**
+```bash
+# View authentication logs in real-time
+docker-compose logs -f airflow-apiserver | grep -E "🔐|✅|⚠️"
+```
+
+**Check user roles in Airflow:**
+1. Log into Airflow as admin
+2. Go to Security → List Users
+3. Check user's assigned roles
+
+**Test role mapping:**
+```bash
+# Check if roles are being extracted correctly
+docker-compose logs airflow-apiserver --tail=100 | grep "Final user_info"
+```
+
+### Security Considerations
+
+- **CSRF Protection**: Enabled with `WTF_CSRF_ENABLED = True`
+- **Role Synchronization**: `AUTH_ROLES_SYNC_AT_LOGIN = True` updates roles on each login
+- **Default Role**: New users get "Viewer" role by default
+- **Environment Variables**: Store sensitive Azure credentials securely
+
 ## Development
 
 ### Adding DAGs
@@ -307,20 +423,6 @@ curl "http://localhost:8080/api/v2/importErrors"
 ```
 
 **Example working DAG**: See `example_dag_airflow_3.py` in the project root for a complete example compatible with Airflow 3.0.2.
-
-### Logs and Debugging
-
-```bash
-# View all service logs
-./run.sh logs
-
-# View specific service logs
-docker-compose logs airflow-webserver
-docker-compose logs postgres
-
-# Follow logs in real-time
-docker-compose logs -f airflow-scheduler
-```
 
 ## Security Considerations
 
