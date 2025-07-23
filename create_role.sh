@@ -27,15 +27,27 @@ create_role() {
 }
 
 add_dag_perms() {
-  local role=$1; shift
-  for dag in "$@"; do
-    log "Adding perms for DAG '$dag' to role '$role'"
-    run_cli roles add-perms "$role" -a can_read -r "DAG:$dag" || warn "can_read DAG:$dag"
-    run_cli roles add-perms "$role" -a can_edit -r "DAG:$dag" || warn "can_edit DAG:$dag"
-    run_cli roles add-perms "$role" -a can_read -r "DagRun:$dag" || warn "can_read DagRun:$dag"
-    run_cli roles add-perms "$role" -a can_edit -r "DagRun:$dag" || warn "can_edit DagRun:$dag"
-    run_cli roles add-perms "$role" -a can_read -r "TaskInstance:$dag" || warn "can_read TaskInstance:$dag"
-    run_cli roles add-perms "$role" -a can_edit -r "TaskInstance:$dag" || warn "can_edit TaskInstance:$dag"
+  local role="$1"; shift
+  local dags=("$@")
+
+  # Grant UI menu access
+  run_cli roles add-perms "$role" -a menu_access -r DAGs        || warn "menu_access DAGs"
+  run_cli roles add-perms "$role" -a menu_access -r Browse      || warn "menu_access Browse"
+  run_cli roles add-perms "$role" -a menu_access -r Assets      || warn "menu_access Assets"
+
+  # Required resources with correct names (non-DAG scoped)
+  run_cli roles add-perms "$role" -a can_read -r "Task Instances" || warn "can_read Task Instances"
+  run_cli roles add-perms "$role" -a can_read -r "Task Logs"      || warn "can_read Task Logs"
+  run_cli roles add-perms "$role" -a can_read -r "DAG Code"       || warn "can_read DAG Code"
+  run_cli roles add-perms "$role" -a can_read -r "DAG Runs"       || warn "can_read DAG Runs"
+  run_cli roles add-perms "$role" -a can_read -r "XComs"          || warn "can_read XComs"
+
+  for dag in "${dags[@]}"; do
+    log "🔐 Adding DAG-specific perms for '$dag' to role '$role'"
+
+    run_cli roles add-perms "$role" -a can_read -r "DAG:$dag"    || warn "can_read DAG:$dag"
+    run_cli roles add-perms "$role" -a can_edit -r "DAG:$dag"    || warn "can_edit DAG:$dag"
+    # No can_trigger, skip or define custom if needed
   done
 }
 
