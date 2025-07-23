@@ -13,6 +13,21 @@ Apache Airflow is an open-source platform to develop, schedule, and monitor work
 - **Easy-to-use management script** for common operations
 - **Production-ready setup** with proper volume mounts and configurations
 
+## 🎥 Demo Video
+
+Watch a complete walkthrough of this Airflow demo project setup and configuration:
+
+[![Airflow Demo Video](https://img.youtube.com/vi/kL8MY7EihFc/maxresdefault.jpg)](https://youtu.be/kL8MY7EihFc)
+
+**[🔗 Watch on YouTube: Airflow Demo Project Walkthrough](https://youtu.be/kL8MY7EihFc)**
+
+The video covers:
+- Docker Compose setup and initialization
+- Azure AD authentication configuration
+- Role management and permissions
+- DAG development and deployment
+- Troubleshooting common issues
+
 ## Quick Start
 
 ### Prerequisites
