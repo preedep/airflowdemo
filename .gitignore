@@ -5,3 +5,4 @@ logs
 plugins
 dags
 config
+role_mapping.json.bkk

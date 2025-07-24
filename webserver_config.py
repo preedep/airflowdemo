@@ -2,6 +2,10 @@ from __future__ import annotations
 import os
 import logging
 import sys
+import json
+import time
+from pathlib import Path
+from typing import Dict, Tuple, Optional
 
 from flask_appbuilder.security.manager import AUTH_OAUTH
 from airflow.providers.fab.auth_manager.security_manager.override import FabAirflowSecurityManagerOverride
@@ -24,7 +28,11 @@ AZURE_CLIENT_SECRET = os.environ.get("AZURE_CLIENT_SECRET")
 
 # Configuration for role mapping method
 # Options: "role" (use roles claim) or "group" (use groups claim)
-ROLE_MAPPING_METHOD = os.environ.get("ROLE_MAPPING_METHOD", "role").lower()
+ROLE_MAPPING_METHOD = os.environ.get("ROLE_MAPPING_METHOD", "group").lower()
+
+# Configuration for role mapping file
+ROLE_MAPPING_FILE = os.environ.get("ROLE_MAPPING_FILE", "role_mapping.json")
+ROLE_MAPPING_CACHE_TTL = int(os.environ.get("ROLE_MAPPING_CACHE_TTL", "300"))  # 5 minutes default
 
 missing_env = [name for name, val in {
     "AZURE_TENANT_ID": AZURE_TENANT_ID,
@@ -40,6 +48,125 @@ if ROLE_MAPPING_METHOD not in ["role", "group"]:
 
 logger.debug(f"[OAUTH ENV] TENANT={AZURE_TENANT_ID}, CLIENT_ID={'SET' if AZURE_CLIENT_ID else 'NOT SET'}")
 logger.debug(f"[OAUTH CONFIG] ROLE_MAPPING_METHOD={ROLE_MAPPING_METHOD}")
+logger.debug(f"[OAUTH CONFIG] ROLE_MAPPING_FILE={ROLE_MAPPING_FILE}")
+logger.debug(f"[OAUTH CONFIG] ROLE_MAPPING_CACHE_TTL={ROLE_MAPPING_CACHE_TTL}s")
+
+# Global cache for role mappings
+_role_mapping_cache = {
+    'data': None,
+    'timestamp': 0,
+    'file_mtime': 0
+}
+
+def _get_file_path(file_path: str) -> Path:
+    """Get absolute path for role mapping file with validation."""
+    path = Path(file_path)
+    if not path.is_absolute():
+        # If relative path, make it relative to this config file's directory
+        config_dir = Path(__file__).parent
+        path = config_dir / path
+    return path
+
+def _validate_role_mapping_structure(data: dict) -> bool:
+    """Validate the structure of role mapping JSON."""
+    if not isinstance(data, dict):
+        return False
+    
+    # Check for required keys
+    if 'role_mapping' not in data and 'group_mapping' not in data:
+        logger.warning("🔐 [VALIDATION] Neither 'role_mapping' nor 'group_mapping' found in config")
+        return False
+    
+    # Validate role_mapping structure
+    if 'role_mapping' in data:
+        if not isinstance(data['role_mapping'], dict):
+            logger.error("🔐 [VALIDATION] 'role_mapping' must be a dictionary")
+            return False
+    
+    # Validate group_mapping structure
+    if 'group_mapping' in data:
+        if not isinstance(data['group_mapping'], dict):
+            logger.error("🔐 [VALIDATION] 'group_mapping' must be a dictionary")
+            return False
+    
+    return True
+
+def load_role_mappings(file_path: Optional[str] = None, force_reload: bool = False) -> Tuple[Dict[str, str], Dict[str, str]]:
+    """Load role and group mappings from JSON file with caching and validation.
+    
+    Args:
+        file_path: Path to role mapping JSON file. If None, uses ROLE_MAPPING_FILE env var.
+        force_reload: If True, bypass cache and reload from file.
+    
+    Returns:
+        Tuple of (role_mapping, group_mapping) dictionaries.
+    """
+    global _role_mapping_cache
+    
+    if file_path is None:
+        file_path = ROLE_MAPPING_FILE
+    
+    try:
+        file_path_obj = _get_file_path(file_path)
+        current_time = time.time()
+        
+        # Check if file exists
+        if not file_path_obj.exists():
+            logger.error(f"🔐 [ERROR] Role mapping file not found: {file_path_obj}")
+            return {}, {}
+        
+        file_mtime = file_path_obj.stat().st_mtime
+        
+        # Check cache validity
+        cache_valid = (
+            not force_reload and
+            _role_mapping_cache['data'] is not None and
+            (current_time - _role_mapping_cache['timestamp']) < ROLE_MAPPING_CACHE_TTL and
+            _role_mapping_cache['file_mtime'] == file_mtime
+        )
+        
+        if cache_valid:
+            logger.debug("🔐 [CACHE] Using cached role mappings")
+            data = _role_mapping_cache['data']
+        else:
+            logger.debug(f"🔐 [LOAD] Loading role mappings from: {file_path_obj}")
+            
+            with open(file_path_obj, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Validate structure
+            if not _validate_role_mapping_structure(data):
+                logger.error("🔐 [ERROR] Invalid role mapping file structure")
+                return {}, {}
+            
+            # Update cache
+            _role_mapping_cache.update({
+                'data': data,
+                'timestamp': current_time,
+                'file_mtime': file_mtime
+            })
+            
+            logger.debug("🔐 [CACHE] Role mappings cached successfully")
+        
+        role_mapping = data.get('role_mapping', {})
+        group_mapping = data.get('group_mapping', {})
+        
+        logger.debug(f"🔐 [CONFIG] Loaded {len(role_mapping)} role mappings, {len(group_mapping)} group mappings")
+        
+        return role_mapping, group_mapping
+        
+    except FileNotFoundError:
+        logger.error(f"🔐 [ERROR] Role mapping file not found: {file_path}")
+        return {}, {}
+    except json.JSONDecodeError as e:
+        logger.error(f"🔐 [ERROR] Invalid JSON in role mapping file: {e}")
+        return {}, {}
+    except PermissionError:
+        logger.error(f"🔐 [ERROR] Permission denied reading role mapping file: {file_path}")
+        return {}, {}
+    except Exception as e:
+        logger.error(f"🔐 [ERROR] Unexpected error loading role mappings: {e}")
+        return {}, {}
 
 # CSRF
 WTF_CSRF_ENABLED = True
@@ -48,7 +175,7 @@ WTF_CSRF_TIME_LIMIT = None
 # Airflow OAuth config
 AUTH_TYPE = AUTH_OAUTH
 AUTH_USER_REGISTRATION = True
-AUTH_USER_REGISTRATION_ROLE = "Viewer"  # default role
+AUTH_USER_REGISTRATION_ROLE = "Unassigned"  # default role
 AUTH_ROLES_SYNC_AT_LOGIN = True
 
 OAUTH_PROVIDERS = [
@@ -96,19 +223,8 @@ class CustomSecurityManager(FabAirflowSecurityManagerOverride):
         logger.debug(f"🔐   userinfo (full): {userinfo!r}")
         logger.debug("🔐 " + "-"*50)
 
-        # Azure AD App Role to Airflow Role mapping
-        role_mapping = {
-            "Airflow.Admin": "Admin",
-            "Airflow.Viewer": "Viewer",
-            "Airflow.ProjectA": "ProjectA",
-            "Airflow.ProjectB": "ProjectB",
-        }
-
-        # Azure AD Group to Airflow Role mapping
-        group_mapping = {
-            "87759d0d-0948-4154-b5cc-0d9aa690c0d5" : "Admin",
-            "87b76a76-2c08-4c49-aca6-830177ac6ae3" : "ProjectA"
-        }
+        # Load role and group mappings using professional utility function
+        role_mapping, group_mapping = load_role_mappings()
 
 
         # Map Azure AD roles to Airflow roles
@@ -319,7 +435,13 @@ class CustomSecurityManager(FabAirflowSecurityManagerOverride):
         logger.debug(f"🔐 [auth_user_oauth] User's current roles before update: {[r.name for r in user.roles]}")
         
         # Get target roles from userinfo
-        role_keys = userinfo.get('role_keys', [AUTH_USER_REGISTRATION_ROLE])
+        role_keys = userinfo.get('role_keys', [])
+        
+        # If no roles were mapped or role_keys is empty, use default registration role
+        if not role_keys:
+            role_keys = [AUTH_USER_REGISTRATION_ROLE]
+            logger.debug(f"🔐 [auth_user_oauth] No roles mapped, using default role: {AUTH_USER_REGISTRATION_ROLE}")
+        
         logger.debug(f"🔐 [auth_user_oauth] Target roles to assign: {role_keys}")
         
         # Assign roles to user

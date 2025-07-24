@@ -71,6 +71,7 @@ airflowdemo/
 ├── docker-compose.yaml          # Docker Compose configuration
 ├── run.sh                       # Management script
 ├── webserver_config.py          # Airflow webserver configuration
+├── role_mapping.json            # Role mapping configuration
 ├── README.md                    # This file
 ├── .gitignore                   # Git ignore rules
 ├── dags/                        # DAG files directory
@@ -254,22 +255,63 @@ AZURE_CLIENT_SECRET=your-client-secret
 
 ### Role Mapping Configuration
 
-The `webserver_config.py` file contains a custom `CustomSecurityManager` class that maps Azure AD app roles to Airflow roles:
+The system uses a **professional, file-based role mapping configuration** with `role_mapping.json` for dynamic role assignment:
 
-```python
-role_mapping = {
-    "Airflow.Admin": "Admin",
-    "Airflow.Viewer": "Viewer", 
-    "Airflow.ProjectA": "ProjectA",
-    "Airflow.ProjectB": "ProjectB",
+#### Configuration File Structure
+
+```json
+{
+    "role_mapping": {
+        "Airflow.Admin": "Admin",
+        "Airflow.Viewer": "Viewer",
+        "Airflow.ProjectA": "ProjectA"
+    },
+    "group_mapping": {
+        "87759d0d-0948-4154-b5cc-0d9aa690c0d5": "Admin",
+        "87b76a76-2c08-4c49-aca6-830177ac6ae3": "ProjectA"
+    }
 }
 ```
 
-**Role Extraction Logic:**
-- Checks both `id_token_claims` and `userinfo` for roles
-- Maps Azure AD app roles to corresponding Airflow roles
-- Falls back to default "Viewer" role if no roles are mapped
-- Provides detailed logging for troubleshooting
+#### Environment Variables
+
+```bash
+# Optional: Custom role mapping file path (default: role_mapping.json)
+ROLE_MAPPING_FILE=/path/to/custom/role_mapping.json
+
+# Optional: Cache TTL in seconds (default: 300 seconds/5 minutes)
+ROLE_MAPPING_CACHE_TTL=600
+
+# Role mapping method: "role" or "group" (default: "role")
+ROLE_MAPPING_METHOD=role
+```
+
+#### Key Features
+
+- **🔄 Dynamic Loading**: Changes take effect immediately without server restart
+- **⚡ Smart Caching**: File-based caching with modification time detection
+- **🛡️ Robust Validation**: Comprehensive JSON structure validation
+- **📁 Flexible Paths**: Supports both absolute and relative file paths
+- **🔍 Professional Logging**: Detailed debug information for troubleshooting
+- **⚙️ Environment Config**: Configurable via environment variables
+
+#### Role Assignment Logic
+
+1. **Load Mappings**: Read from `role_mapping.json` (cached for performance)
+2. **Extract Claims**: Check both `id_token_claims` and `userinfo` for roles/groups
+3. **Map Roles**: Convert Azure AD roles/groups to Airflow roles
+4. **Fallback**: Use "Unassigned" role if no mappings found
+5. **Assign**: Create and assign roles to user in database
+
+#### Mapping Methods
+
+**Role-based Mapping** (`ROLE_MAPPING_METHOD=role`):
+- Uses Azure AD App Roles from token claims
+- Maps via `role_mapping` section in JSON
+
+**Group-based Mapping** (`ROLE_MAPPING_METHOD=group`):
+- Uses Azure AD Group IDs from token claims  
+- Maps via `group_mapping` section in JSON
 
 **Airflow Roles:**
 
@@ -287,17 +329,76 @@ role_mapping = {
 
 #### Common Issues
 
-**Issue: Users get "Viewer" role instead of expected role**
+**Issue: Users get "Unassigned" role instead of expected role**
 
-*Solution:* Check the authentication logs:
+*Solution:* Check the role mapping configuration and logs:
+
+1. **Verify role_mapping.json structure:**
 ```bash
-docker-compose logs airflow-apiserver | grep "🔐"
+cat role_mapping.json
 ```
 
-Look for:
+2. **Check authentication logs:**
+```bash
+docker-compose logs airflow-webserver | grep "🔐"
+```
+
+3. **Look for these log patterns:**
+- `🔐 [CONFIG] Loaded role_mapping: {...}` - Shows loaded mappings
 - `🔐 Roles from userinfo: ['Airflow.Admin']` - Shows roles from Azure AD
-- `🔐 Mapped 'Airflow.Admin' -> 'Admin'` - Shows successful mapping
-- `🔐 Final mapped Airflow roles: ['Admin']` - Shows final result
+- `🔐 ✅ [ROLE] Mapped 'Airflow.Admin' -> 'Admin'` - Shows successful mapping
+- `🔐 [RESULT] Final mapped Airflow roles: ['Admin']` - Shows final result
+
+**Issue: "role_mapping.json file not found" error**
+
+*Solution:* Ensure the file exists and is properly mounted:
+
+1. **Check file exists:**
+```bash
+ls -la role_mapping.json
+```
+
+2. **Verify Docker volume mount in docker-compose.yaml:**
+```yaml
+volumes:
+  - ./role_mapping.json:/opt/airflow/role_mapping.json
+```
+
+3. **Check file permissions:**
+```bash
+chmod 644 role_mapping.json
+```
+
+**Issue: "Invalid JSON in role_mapping.json" error**
+
+*Solution:* Validate JSON syntax:
+
+1. **Use JSON validator:**
+```bash
+python -m json.tool role_mapping.json
+```
+
+2. **Check for common JSON errors:**
+   - Missing commas between objects
+   - Trailing commas (not allowed in JSON)
+   - Unescaped quotes in strings
+   - Missing closing braces/brackets
+
+**Issue: Role mapping not updating after JSON changes**
+
+*Solution:* The system uses intelligent caching:
+
+1. **Check cache TTL setting:**
+```bash
+echo $ROLE_MAPPING_CACHE_TTL  # Default: 300 seconds
+```
+
+2. **Force reload by restarting webserver:**
+```bash
+docker-compose restart airflow-webserver
+```
+
+3. **Or wait for cache expiry (5 minutes by default)**
 
 **Issue: "Missing required Azure env vars" error**
 

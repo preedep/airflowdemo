@@ -1,0 +1,10 @@
+{
+    "role_mapping": {
+        "Airflow.Admin": "Admin",
+        "Airflow.ProjectA": "ProjectA"
+    },
+    "group_mapping": {
+        "87759d0d-0948-4154-b5cc-0d9aa690c0d5" : "Admin",
+        "87b76a76-2c08-4c49-aca6-830177ac6ae3" : "ProjectA" 
+    }
+}
