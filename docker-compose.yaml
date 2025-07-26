@@ -58,7 +58,7 @@ x-airflow-common:
     AIRFLOW__API__AUTH_BACKEND: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
     AIRFLOW__AUTH__BACKEND: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: redis://:@redis:6379/1
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
@@ -66,6 +66,41 @@ x-airflow-common:
     AIRFLOW__WEBSERVER__WEBSERVER_CONFIG: /opt/airflow/webserver_config.py
     ROLE_MAPPING_FILE: /opt/airflow/role_mapping.json
     ROLE_MAPPING_CACHE_TTL: 300
+
+    AIRFLOW__EMAIL__EMAIL_BACKEND: airflow.utils.email.send_email_smtp
+    AIRFLOW__EMAIL__FROM_EMAIL: ${AIRFLOW_EMAIL_FROM:-"Airflow Alerts <noreply@example.com>"}
+    AIRFLOW__EMAIL__SUBJECT_TEMPLATE: /opt/airflow/templates/email_subject_template.txt
+    AIRFLOW__EMAIL__HTML_CONTENT_TEMPLATE: /opt/airflow/config/email_body_template.html
+    AIRFLOW__SMTP__SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+    AIRFLOW__SMTP__SMTP_STARTTLS: ${SMTP_STARTTLS:-True}
+    AIRFLOW__SMTP__SMTP_SSL: ${SMTP_SSL:-False}
+    AIRFLOW__SMTP__SMTP_PORT: ${SMTP_PORT:-587}
+    AIRFLOW__SMTP__SMTP_USER: ${SMTP_USER:-user@example.com}
+    AIRFLOW__SMTP__SMTP_PASSWORD: ${SMTP_PASSWORD:-'12345'}
+    AIRFLOW__SMTP__SMTP_MAIL_FROM: ${SMTP_MAIL_FROM:-user@example.com}
+
+    # Redis/Celery optimizations to fix serialization race conditions
+    AIRFLOW__CORE__DAG_SERIALIZATION_CACHE_TTL: 60
+    AIRFLOW__CORE__MIN_SERIALIZED_DAG_UPDATE_INTERVAL: 30
+    AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS__VISIBILITY_TIMEOUT: 3600
+    AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS__FANOUT_PREFIX: 'true'
+    AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS__FANOUT_PATTERNS: 'true'
+    AIRFLOW__CELERY__RESULT_BACKEND_TRANSPORT_OPTIONS__RESULT_EXPIRES: 3600
+    AIRFLOW__CELERY__TASK_ALWAYS_EAGER: 'false'
+    AIRFLOW__CELERY__TASK_ACKS_LATE: 'true'
+    AIRFLOW__CELERY__WORKER_PREFETCH_MULTIPLIER: 1
+    AIRFLOW__CELERY__TASK_REJECT_ON_WORKER_LOST: 'true'
+
+    AIRFLOW__CELERY__WORKER_CONCURRENCY: 4
+    AIRFLOW__CORE__PARALLELISM: 8
+    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: 8
+    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAGRUN: 8
+    
+    # Airflow 3.0.2 API Authentication
+    AIRFLOW__API__AUTH__JWT_SECRET: ${AIRFLOW__API__AUTH__JWT_SECRET}
+    AIRFLOW__API__AUTH__BACKEND: airflow.api.auth.backend.jwt_token
+    AIRFLOW__API__ENABLE_EXPERIMENTAL_API: 'false'
+    
     # yamllint disable rule:line-length
     # Use simple http server on scheduler for health checks
     # See https://airflow.apache.org/docs/apache-airflow/stable/administration-and-deployment/logging-monitoring/check-health.html#scheduler-health-check-server
@@ -90,6 +125,8 @@ x-airflow-common:
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
     - ${AIRFLOW_PROJ_DIR:-.}/webserver_config.py:/opt/airflow/webserver_config.py
     - ${AIRFLOW_PROJ_DIR:-.}/role_mapping.json:/opt/airflow/role_mapping.json
+    - ${AIRFLOW_PROJ_DIR:-.}/email_subject_template.txt:/opt/airflow/templates/email_subject_template.txt
+    - ${AIRFLOW_PROJ_DIR:-.}/email_body_template.html:/opt/airflow/config/email_body_template.html
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
@@ -140,6 +177,7 @@ services:
       retries: 5
       start_period: 30s
     restart: always
+   
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -194,6 +232,7 @@ services:
       # Required to handle warm shutdown of the celery workers properly
       # See https://airflow.apache.org/docs/docker-stack/entrypoint.html#signal-propagation
       DUMB_INIT_SETSID: "0"
+      AIRFLOW_SDK_API_URL: http://airflow-apiserver:8080
     restart: always
     depends_on:
       <<: *airflow-common-depends-on

@@ -1,0 +1,10 @@
+<html>
+  <body>
+    <p>DAG: {{ ti.dag_id }}</p>
+    <p>Task: {{ ti.task_id }}</p>
+    <p>Status: {{ ti.state }}</p>
+    <p>Try: {{ ti.try_number }} / {{ ti.max_tries + 1 }}</p>
+    <p>Exception: {{ exception }}</p>
+    <p>Log: <a href="{{ ti.log_url }}">Link</a></p>
+  </body>
+</html>
