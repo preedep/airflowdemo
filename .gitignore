@@ -6,3 +6,4 @@ plugins
 dags
 config
 role_mapping.json.bkk
+test

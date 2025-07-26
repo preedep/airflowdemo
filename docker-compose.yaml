@@ -67,17 +67,22 @@ x-airflow-common:
     ROLE_MAPPING_FILE: /opt/airflow/role_mapping.json
     ROLE_MAPPING_CACHE_TTL: 300
 
-    AIRFLOW__EMAIL__EMAIL_BACKEND: airflow.utils.email.send_email_smtp
-    AIRFLOW__EMAIL__FROM_EMAIL: ${AIRFLOW_EMAIL_FROM:-"Airflow Alerts <noreply@example.com>"}
+    AIRFLOW__LOGGING__LOGGING_LEVEL: DEBUG
+    AIRFLOW__LOGGING__EXTRA_LOGGERS: smtplib,airflow.utils.email
+
+    # Email
     AIRFLOW__EMAIL__SUBJECT_TEMPLATE: /opt/airflow/templates/email_subject_template.txt
     AIRFLOW__EMAIL__HTML_CONTENT_TEMPLATE: /opt/airflow/config/email_body_template.html
-    AIRFLOW__SMTP__SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
-    AIRFLOW__SMTP__SMTP_STARTTLS: ${SMTP_STARTTLS:-True}
-    AIRFLOW__SMTP__SMTP_SSL: ${SMTP_SSL:-False}
-    AIRFLOW__SMTP__SMTP_PORT: ${SMTP_PORT:-587}
-    AIRFLOW__SMTP__SMTP_USER: ${SMTP_USER:-user@example.com}
-    AIRFLOW__SMTP__SMTP_PASSWORD: ${SMTP_PASSWORD:-'12345'}
-    AIRFLOW__SMTP__SMTP_MAIL_FROM: ${SMTP_MAIL_FROM:-user@example.com}
+
+    AIRFLOW__SMTP__SMTP_HOST: ${SMTP_HOST}
+    AIRFLOW__SMTP__SMTP_PORT: ${SMTP_PORT}
+    AIRFLOW__SMTP__SMTP_STARTTLS: ${SMTP_STARTTLS}
+    AIRFLOW__SMTP__SMTP_SSL: ${SMTP_SSL}
+    AIRFLOW__SMTP__SMTP_USER: ${SMTP_USER}
+    AIRFLOW__SMTP__SMTP_PASSWORD: ${SMTP_PASSWORD}
+    AIRFLOW__SMTP__SMTP_MAIL_FROM: ${SMTP_MAIL_FROM}
+    AIRFLOW__EMAIL__FROM_EMAIL: ${AIRFLOW_EMAIL_FROM}
+    AIRFLOW__EMAIL__EMAIL_BACKEND: airflow.utils.email.send_email_smtp
 
     # Redis/Celery optimizations to fix serialization race conditions
     AIRFLOW__CORE__DAG_SERIALIZATION_CACHE_TTL: 60
