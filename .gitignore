@@ -6,4 +6,5 @@ plugins
 dags
 config
 role_mapping.json.bkk
+email_body_template.bkk.html
 test
