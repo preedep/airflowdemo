@@ -44,6 +44,8 @@ AIRFLOW__SMTP__SMTP_PASSWORD: ${SMTP_PASSWORD}
 AIRFLOW__SMTP__SMTP_MAIL_FROM: ${SMTP_MAIL_FROM}
 AIRFLOW__EMAIL__FROM_EMAIL: ${AIRFLOW_EMAIL_FROM}
 AIRFLOW__EMAIL__EMAIL_BACKEND: airflow.utils.email.send_email_smtp
+AIRFLOW_CONN_SMTP_DEFAULT: ${AIRFLOW_CONN_SMTP_DEFAULT}
+
 ```
 
 ### Environment Variables (.env file)
@@ -65,6 +67,10 @@ SMTP_HOST=smtp.azurecomm.net
 SMTP_PORT=587
 SMTP_STARTTLS=True
 SMTP_SSL=False
+
+# SMTP Connection
+# example: AIRFLOW_CONN_SMTP_DEFAULT='smtp://your-acs-resource.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:Vrc8Q~***************************@smtp.azurecomm.net:587'
+AIRFLOW_CONN_SMTP_DEFAULT='smtp://${SMTP_USER}:${SMTP_PASSWORD}@${SMTP_HOST}:${SMTP_PORT}'
 ```
 
 ## SMTP Connection Setup
