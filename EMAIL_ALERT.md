@@ -101,21 +101,7 @@ Use the `add_smtp_default.sh` script for automated connection creation:
 ./add_smtp_default.sh my_smtp_connection
 ```
 
-#### Method 2: Using Airflow CLI
-
-```bash
-# Create SMTP connection via CLI
-docker-compose exec airflow-webserver airflow connections add \
-  --conn-id smtp_default \
-  --conn-type smtp \
-  --conn-host smtp.gmail.com \
-  --conn-port 587 \
-  --conn-login your-email@gmail.com \
-  --conn-password your-app-password \
-  --conn-extra '{"use_tls": true, "use_ssl": false}'
-```
-
-#### Method 3: Using Airflow Web UI
+#### Method 2: Using Airflow Web UI
 
 1. Navigate to Airflow Web UI → Admin → Connections
 2. Click "Add a new record"
