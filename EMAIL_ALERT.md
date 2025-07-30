@@ -250,36 +250,125 @@ with DAG(
 
 ## Testing & Troubleshooting
 
-### Testing Email Configuration
+### Testing Email Configuration with Azure Communication Service
 
-#### 1. Test SMTP Connection
+#### 1. Interactive Testing in Worker Container
+
+Access the worker container directly for hands-on testing:
 
 ```bash
-# Test SMTP connection from Airflow container
-docker-compose exec airflow-webserver python3 -c "
-import smtplib
-from email.mime.text import MIMEText
-
-server = smtplib.SMTP('smtp.gmail.com', 587)
-server.starttls()
-server.login('your-email@gmail.com', 'your-app-password')
-print('SMTP connection successful!')
-server.quit()
-"
+# Enter worker container bash session
+docker-compose exec airflow-worker bash
 ```
 
-#### 2. Test Airflow Email Function
+Once inside the worker container, run these commands:
+
+```python
+# Test Azure Communication Service SMTP connection
+python3
+>>> import smtplib
+>>> from email.mime.text import MIMEText
+>>> # Azure Communication Service SMTP settings
+>>> server = smtplib.SMTP('smtp.azurecomm.net', 587)
+>>> server.starttls()
+>>> server.login('your-acs-resource.your-domain@azurecomm.net', 'your-acs-access-key')
+>>> print('Azure Communication Service SMTP connection successful!')
+>>> server.quit()
+>>> exit()
+```
+
+#### 2. Test Airflow Email Function with Azure Communication Service
+
+Still in the worker container bash session:
+
+```python
+# Test Airflow's send_email function with Azure Communication Service
+python3
+>>> from airflow.utils.email import send_email
+>>> send_email(
+...     to=['recipient@company.com'],
+...     subject='📧 Test Email from Airflow Worker via Azure Communication Service',
+...     html_content='''
+...     <h2>Direct Test from Worker Container</h2>
+...     <p>This email was sent via <strong>Azure Communication Service SMTP</strong> from the worker container bash session.</p>
+...     <p><strong>Container:</strong> airflow-worker</p>
+...     <p><strong>SMTP Provider:</strong> Azure Communication Service</p>
+...     <p><strong>Method:</strong> airflow.utils.email.send_email()</p>
+...     <p><strong>Host:</strong> smtp.azurecomm.net</p>
+...     '''
+... )
+>>> print('Email sent successfully via Azure Communication Service!')
+>>> exit()
+```
+
+#### 3. Test with Azure Communication Service Environment Variables
+
+Check and test with actual Azure Communication Service environment variables:
 
 ```bash
-# Test Airflow's send_email function
-docker-compose exec airflow-webserver python3 -c "
+# Still in worker container - check Azure Communication Service SMTP config
+echo "SMTP Host: $AIRFLOW__SMTP__SMTP_HOST"  # Should be smtp.azurecomm.net
+echo "SMTP Port: $AIRFLOW__SMTP__SMTP_PORT"  # Should be 587
+echo "SMTP User: $AIRFLOW__SMTP__SMTP_USER"  # Should be your-acs-resource.your-domain@azurecomm.net
+echo "Email From: $AIRFLOW__EMAIL__FROM_EMAIL"  # Should be verified sender address
+
+# Test with Azure Communication Service environment variables
+python3 -c "
+import os
 from airflow.utils.email import send_email
+
+print('Testing Azure Communication Service with environment variables:')
+print(f'SMTP Host: {os.getenv(\"AIRFLOW__SMTP__SMTP_HOST\")}')
+print(f'SMTP User: {os.getenv(\"AIRFLOW__SMTP__SMTP_USER\")}')
+print(f'Email From: {os.getenv(\"AIRFLOW__EMAIL__FROM_EMAIL\")}')
+
 send_email(
-    to=['your-email@gmail.com'],
-    subject='Test Email from Airflow',
-    html_content='<h2>Test successful!</h2>'
+    to=['recipient@company.com'],
+    subject='🔧 Azure Communication Service Environment Test',
+    html_content='''
+    <h2>Email sent using Azure Communication Service!</h2>
+    <p>This test confirms Azure Communication Service SMTP is working with environment variables.</p>
+    <ul>
+        <li><strong>Provider:</strong> Azure Communication Service</li>
+        <li><strong>SMTP Host:</strong> smtp.azurecomm.net</li>
+        <li><strong>Port:</strong> 587</li>
+        <li><strong>TLS:</strong> Enabled</li>
+    </ul>
+    '''
 )
-print('Email sent successfully!')
+print('Azure Communication Service environment variable test completed!')
 "
+
+# Exit worker container
+exit
+```
+
+#### 4. Azure Communication Service Configuration Example
+
+For reference, here's how to configure Azure Communication Service in your `.env` file:
+
+```bash
+# Azure Communication Service SMTP Configuration
+SMTP_HOST=smtp.azurecomm.net
+SMTP_PORT=587
+SMTP_STARTTLS=true
+SMTP_SSL=false
+SMTP_USER=your-acs-resource.your-domain@azurecomm.net
+SMTP_PASSWORD=your-acs-access-key
+SMTP_MAIL_FROM=noreply@your-verified-domain.com
+AIRFLOW_EMAIL_FROM=noreply@your-verified-domain.com
+```
+
+#### 4. Test DAG Email Notifications
+
+```bash
+# Back to host machine - trigger test DAG
+docker-compose exec airflow-webserver airflow dags trigger scb_ap1234_notify_test_v4
+
+# Check task logs (tasks run on workers)
+docker-compose exec airflow-webserver airflow tasks logs scb_ap1234_notify_test_v4 fail_and_notify 2024-01-01
+
+# Monitor worker logs in real-time for email activity
+docker-compose logs -f airflow-worker | grep -i email
 ```
 
