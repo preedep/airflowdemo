@@ -70,6 +70,7 @@ SMTP_SSL=False
 
 # SMTP Connection
 # example: AIRFLOW_CONN_SMTP_DEFAULT='smtp://your-acs-resource.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:Vrc8Q~***************************@smtp.azurecomm.net:587'
+# example: AIRFLOW_CONN_SMTP_DEFAULT='smtp://user:pass@smtp.gmail.com:587'
 AIRFLOW_CONN_SMTP_DEFAULT='smtp://${SMTP_USER}:${SMTP_PASSWORD}@${SMTP_HOST}:${SMTP_PORT}'
 ```
 
