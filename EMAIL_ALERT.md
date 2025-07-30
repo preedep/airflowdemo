@@ -3,6 +3,48 @@
 ## Overview
 This document provides comprehensive guidance for setting up email notifications in Apache Airflow 3.0.2, including DAG-level alerts, task failure notifications, and custom email templates.
 
+## SMTP Configuration
+
+Add these environment variables to your `docker-compose.yaml`:
+
+```yaml
+# Email Templates
+AIRFLOW__EMAIL__SUBJECT_TEMPLATE: /opt/airflow/templates/email_subject_template.txt
+AIRFLOW__EMAIL__HTML_CONTENT_TEMPLATE: /opt/airflow/config/email_body_template.html
+
+# SMTP Configuration
+AIRFLOW__SMTP__SMTP_HOST: ${SMTP_HOST}
+AIRFLOW__SMTP__SMTP_PORT: ${SMTP_PORT}
+AIRFLOW__SMTP__SMTP_STARTTLS: ${SMTP_STARTTLS}
+AIRFLOW__SMTP__SMTP_SSL: ${SMTP_SSL}
+AIRFLOW__SMTP__SMTP_USER: ${SMTP_USER}
+AIRFLOW__SMTP__SMTP_PASSWORD: ${SMTP_PASSWORD}
+AIRFLOW__SMTP__SMTP_MAIL_FROM: ${SMTP_MAIL_FROM}
+AIRFLOW__EMAIL__FROM_EMAIL: ${AIRFLOW_EMAIL_FROM}
+AIRFLOW__EMAIL__EMAIL_BACKEND: airflow.utils.email.send_email_smtp
+```
+
+### Environment Variables (.env file)
+
+Create a `.env` file with your SMTP settings:
+
+```bash
+# Gmail Example
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_STARTTLS=true
+SMTP_SSL=false
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+SMTP_MAIL_FROM=your-email@gmail.com
+AIRFLOW_EMAIL_FROM=your-email@gmail.com
+
+# Outlook Example
+# SMTP_HOST=smtp-mail.outlook.com
+# SMTP_PORT=587
+# SMTP_STARTTLS=true
+# SMTP_SSL=false
+```
 
 ## Email Body Template (email_body_template.html)
 
