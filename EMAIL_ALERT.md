@@ -51,21 +51,20 @@ AIRFLOW__EMAIL__EMAIL_BACKEND: airflow.utils.email.send_email_smtp
 Create a `.env` file with your SMTP settings:
 
 ```bash
-# Gmail Configuration
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_STARTTLS=true
-SMTP_SSL=false
-SMTP_USER=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-SMTP_MAIL_FROM=your-email@gmail.com
-AIRFLOW_EMAIL_FROM=your-email@gmail.com
+# ACS Auth
+SMTP_USER=your-acs-resource.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+#SMTP_USER=donotreply@your-domain.com
+SMTP_PASSWORD=Vrc8Q~***************************
 
-# Outlook Configuration (Alternative)
-# SMTP_HOST=smtp-mail.outlook.com
-# SMTP_PORT=587
-# SMTP_STARTTLS=true
-# SMTP_SSL=false
+# ACS Sender
+SMTP_MAIL_FROM=donotreply@your-domain.com
+AIRFLOW_EMAIL_FROM=donotreply@your-domain.com
+
+# ACS SMTP server
+SMTP_HOST=smtp.azurecomm.net
+SMTP_PORT=587
+SMTP_STARTTLS=True
+SMTP_SSL=False
 ```
 
 ## SMTP Connection Setup
